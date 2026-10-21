@@ -1,73 +1,133 @@
-# React + Vite
+# Roast Me or Toast Me
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+**Turn an awkward moment into a laugh—or a little encouragement.**
 
-Currently, two official plugins are available:
+[**Try the live app**](https://roast-me-toast-me.netlify.app/) · [**Source code**](https://github.com/cjiscoderprime/roast-me-or-toast-me)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Roast Me or Toast Me is a responsive, AI-powered web app. Describe a situation—an interview gone wrong, an awkward conversation, or a small everyday disaster—and choose between a playful **Roast** and a supportive **Toast**. Responses are generated on demand, not selected from a predefined list.
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Two distinct response modes:** sarcastic, situation-specific roasts or encouraging toasts
+- **Fast AI inference:** one model request per generation using Groq's hosted `openai/gpt-oss-20b`
+- **Animated interface:** motion-based buttons, floating background particles, and mode-specific loading indicators
+- **Responsive layout:** usable on desktop and mobile
+- **Distributed rate limiting:** Upstash Redis enforces a sliding window of 60 requests per IP per 15 minutes and an application-wide limit of 500 requests per day
+- **Serverless deployment:** a Netlify Function provides `POST /api/generate`, keeping model and Redis credentials off the client
 
-## Expanding the Oxlint configuration
+## Tech stack
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+| Layer | Technologies |
+| --- | --- |
+| Frontend | React, Vite, CSS, Motion for React |
+| AI inference | Groq SDK, `openai/gpt-oss-20b` |
+| API | Netlify Functions (production), Node.js + Express (local alternative) |
+| Rate limiting | Upstash Redis, `@upstash/ratelimit` |
+| Hosting | Netlify |
+| Version control | Git, GitHub |
 
+## How it works
 
-My thought process:
+```text
+Visitor
+  |
+  v
+React frontend (Roast / Toast + situation)
+  |
+  | POST /api/generate
+  v
+Netlify Function
+  |-- Validate input and mode
+  |-- Check per-IP and global limits in Upstash Redis
+  |-- Request one response from Groq
+  |
+  v
+JSON response -> animated React result card
+```
 
-Wanted to basically build a website that roasts you and then has an option to toast you, an option for recovery.
+The site does not require an account or a user-profile database. Text entered by a visitor is sent to the API and onward to the third-party inference provider to generate a response. Avoid entering sensitive or identifying information.
 
-Project moved forward into the direction of becoming an AI wrapper. 
+## Run locally
 
-Decided to build an agent that can create it's own roasts, review them, and create better more personalized roasts on it's own.
+**Requirements:** Node.js, npm, a Groq API key, and an Upstash Redis database with REST credentials.
 
-Back to being an AI wrapper but creative and a good learning experience.
+1. Clone and install:
 
-Concepts to use:
+   ```bash
+   git clone https://github.com/cjiscoderprime/roast-me-or-toast-me.git
+   cd roast-me-or-toast-me
+   npm install
+   ```
 
-Rejection rates,
-Successful revisions,
-Similarity scores,
-Response Latency
+2. Create a `.env` file at the project root:
 
-Scope:
+   ```dotenv
+   GROQ_API_KEY=your_groq_api_key
+   UPSTASH_REDIS_REST_URL=your_upstash_rest_url
+   UPSTASH_REDIS_REST_TOKEN=your_upstash_rest_token
+   ```
 
-Two Candidate Jokes
-Single Evaluation Pass
-At most one revision
+   **Never commit `.env`.** Environment variables belong on the server, not in browser code.
 
-One generating agent, one critic agent, and a similarity checking tool. An iterative improvement loop.
+3. Run the integrated frontend and serverless function locally:
 
-Work Thought Process:
+   ```bash
+   npx netlify dev
+   ```
 
-Agent needs to make decisions based on the results of previous operations.
+4. Open the local URL printed by Netlify Dev (often `http://localhost:8888`).
 
-Agent's next action depends on its evaluation of previous output.
+The repository also includes an Express development server at `server/index.js`, but the Netlify Function in `netlify/functions/generate.mjs` is the production API.
 
-Creating a finite state machine that can occupy one of a defined number of states. It moves from one state to another according to rules.
-Agent will have states: Idle, Analyzing, Planning, Generating, Evaluating and Completed
-Evaluating can go back to Generating if revision is needed when the joke is weak.
+## API
 
-Pivoting to general context instead of roasting just on academic background.
+**`POST /api/generate`**
 
-Created a working agent execution controller that can dispatch operations, maintain working memory, evaluate results and retry based on a decision threshold. Or a functioning finite state agent orchestrator.
+Request:
 
-Reduced scope to include Groq LLM, Express backend to control API endpoint, React/Vite Frontend, Node.js, Small Redis Rate Limiting
+```json
+{
+  "context": "I practiced for weeks and blanked during my interview.",
+  "mode": "roast"
+}
+```
 
-Adding limits at two levels, inside the agent and at public API endpoint.
+Successful response shape:
 
-Our react application needs to communicate with our AI agent through HTTP or Express API.
+```json
+{
+  "joke": "A generated response appears here.",
+  "mode": "roast",
+  "latencyMs": 1234
+}
+```
 
-Rate Limiting Design:
+Supported modes: `roast` and `toast`. Input is limited to 1,500 characters. Requests may return `400` for invalid input, `429` for rate limits, or `503` when an external service is unavailable.
 
-React -> API Request
-|
-Redis Rate Limiter Per-IP + global quota
-|
-Groq API
-|
-Return joke to react
+## Deployment
 
+The project deploys from the `main` branch to Netlify.
+
+- Build command: `npm run build`
+- Publish directory: `dist`
+- Functions directory: `netlify/functions`
+- Production function route: `/api/generate`
+
+Configure `GROQ_API_KEY`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` in **Netlify's environment variable settings** with access to the Functions runtime. Do not include quotation marks as part of the values. Deploy again after changing environment variables.
+
+## Engineering notes
+
+- The Redis-backed limiters share state across serverless function instances, unlike in-memory request counters.
+- Client IP limits are approximate: visitors on the same network may share an IP address.
+- Application-level request limits help control usage but do not guarantee model-provider availability or zero costs.
+- The frontend never receives the Groq or Redis secret values.
+
+## Future improvements
+
+- One-click copy/share for generated responses
+- Additional UX and accessibility testing
+- Aggregate latency and error-rate monitoring
+
+## Development history
+
+The prototype originally explored a custom finite-state humor agent before pivoting to single-request LLM inference for lower latency and a simpler user experience. The original project notes are archived in [docs/development-notes.md](docs/development-notes.md).
